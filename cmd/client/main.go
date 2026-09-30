@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
@@ -37,6 +38,9 @@ func main() {
 	start := time.Now()
 
 	var wg sync.WaitGroup
+	var successful atomic.Int64
+	var failed atomic.Int64
+
 	for i := 1; i <= *devices; i++ {
 		wg.Add(1)
 		go func(n int) {
@@ -48,19 +52,22 @@ func main() {
 				TemperatureC: 4.0 + float64(n%10)/10,
 				Timestamp:    time.Now().Unix(),
 			})
-			if err != nil {
-				log.Printf("%s: %v", deviceID, err)
+			if err != nil || !resp.GetAccepted() {
+				failed.Add(1)
 				return
 			}
-			fmt.Printf("%s accepted: %t\n", deviceID, resp.GetAccepted())
+			successful.Add(1)
 		}(i)
 	}
 	wg.Wait()
 
 	elapsed := time.Since(start)
-	readingsPerSecond := float64(*devices) / elapsed.Seconds()
+	successCount := successful.Load()
+	readingsPerSecond := float64(successCount) / elapsed.Seconds()
 
-	fmt.Printf("\nDevices: %d\n", *devices)
+	fmt.Printf("Devices: %d\n", *devices)
+	fmt.Printf("Successful: %d\n", successCount)
+	fmt.Printf("Failed: %d\n", failed.Load())
 	fmt.Printf("Elapsed: %s\n", elapsed.Round(time.Millisecond))
-	fmt.Printf("Throughput: %.0f readings/sec\n", readingsPerSecond)
+	fmt.Printf("Throughput: %.0f successful readings/sec\n", readingsPerSecond)
 }
