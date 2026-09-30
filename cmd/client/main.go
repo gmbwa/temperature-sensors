@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	temperaturev1 "temperature-sensors/gen/temperature/v1"
 )
@@ -40,6 +42,8 @@ func main() {
 	var wg sync.WaitGroup
 	var successful atomic.Int64
 	var failed atomic.Int64
+	var errorCounts [17]atomic.Int64
+	var rejected atomic.Int64
 
 	for i := 1; i <= *devices; i++ {
 		wg.Add(1)
@@ -52,8 +56,17 @@ func main() {
 				TemperatureC: 4.0 + float64(n%10)/10,
 				Timestamp:    time.Now().Unix(),
 			})
-			if err != nil || !resp.GetAccepted() {
+			if err != nil {
 				failed.Add(1)
+				code := status.Code(err)
+				if int(code) < len(errorCounts) {
+					errorCounts[code].Add(1)
+				}
+				return
+			}
+			if !resp.GetAccepted() {
+				failed.Add(1)
+				rejected.Add(1)
 				return
 			}
 			successful.Add(1)
@@ -68,6 +81,19 @@ func main() {
 	fmt.Printf("Devices: %d\n", *devices)
 	fmt.Printf("Successful: %d\n", successCount)
 	fmt.Printf("Failed: %d\n", failed.Load())
+
+	if failed.Load() > 0 {
+		fmt.Println("Errors:")
+		for code := codes.OK; code <= codes.Unauthenticated; code++ {
+			if count := errorCounts[code].Load(); count > 0 {
+				fmt.Printf("  %s: %d\n", code, count)
+			}
+		}
+		if count := rejected.Load(); count > 0 {
+			fmt.Printf("  Rejected: %d\n", count)
+		}
+	}
+
 	fmt.Printf("Elapsed: %s\n", elapsed.Round(time.Millisecond))
 	fmt.Printf("Throughput: %.0f successful readings/sec\n", readingsPerSecond)
 }
