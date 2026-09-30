@@ -60,17 +60,31 @@ In a second terminal, with the server still running:
 go run ./cmd/client
 ```
 
-The client reuses one gRPC connection and starts 10 goroutines. Each sends one reading for `device-1` through `device-10`, with temperatures from `4.1°C` to `5.0°C`. It waits for every goroutine to finish, and each one prints a line like:
+The client reuses one gRPC connection and starts one goroutine per simulated device. The default is 10 devices, and each device sends one reading.
+
+Choose the number of devices with `-devices`:
+
+```bash
+go run ./cmd/client -devices=10
+go run ./cmd/client -devices=1000
+go run ./cmd/client -devices=10000
+```
+
+Each successful request prints a line like:
 
 ```text
 device-1 accepted: true
 ```
 
-The server logs one line per reading:
+After all devices finish, the client prints a simple benchmark summary:
 
 ```text
-device-1: 4.1°C
+Devices: 1000
+Elapsed: 250ms
+Throughput: 4000 readings/sec
 ```
+
+The exact numbers depend on the machine and workload. The server logs one line per reading.
 
 Use the same `-addr` flag if the server is not on the default port.
 
@@ -80,4 +94,4 @@ Use the same `-addr` flag if the server is not on the default port.
 2. `protoc` turns that contract into Go types and a gRPC client/server API under `gen/temperature/v1`.
 3. The client fills a `TemperatureReading` in each goroutine, then calls `RecordTemperature` on one shared generated client. gRPC serializes each message and sends it over HTTP/2.
 4. The server implements the generated `TemperatureServiceServer` interface. Its `RecordTemperature` method receives the decoded reading, logs it, and returns `{accepted: true}`.
-5. The generated client decodes that response, and the goroutine prints whether it was accepted. `WaitGroup` keeps the process alive until all 10 calls finish.
+5. The generated client decodes that response, and the goroutine prints whether it was accepted. `WaitGroup` keeps the process alive until all configured device calls finish.
