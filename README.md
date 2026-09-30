@@ -2,7 +2,7 @@
 
 High-throughput temperature telemetry system built with Go and gRPC, designed to simulate and process data from up to 500,000 IoT sensors.
 
-Phase 1 is a minimal gRPC service: one client sends one temperature reading, and the server logs it.
+Phase 1 is a minimal gRPC service: one client sends temperature readings, and the server logs them.
 
 ## Prerequisites
 
@@ -60,16 +60,16 @@ In a second terminal, with the server still running:
 go run ./cmd/client
 ```
 
-The client sends one reading (`device-123` at `4.7°C`) and prints:
+The client reuses one gRPC connection and starts 10 goroutines. Each sends one reading for `device-1` through `device-10`, with temperatures from `4.1°C` to `5.0°C`. It waits for every goroutine to finish, and each one prints a line like:
 
 ```text
-accepted: true
+device-1 accepted: true
 ```
 
-The server logs:
+The server logs one line per reading:
 
 ```text
-device-123: 4.7°C
+device-1: 4.1°C
 ```
 
 Use the same `-addr` flag if the server is not on the default port.
@@ -78,6 +78,6 @@ Use the same `-addr` flag if the server is not on the default port.
 
 1. `temperature.proto` defines `TemperatureReading` (the request) and `RecordTemperatureResponse` (`accepted`). It also defines `TemperatureService` with one RPC, `RecordTemperature`.
 2. `protoc` turns that contract into Go types and a gRPC client/server API under `gen/temperature/v1`.
-3. The client fills a `TemperatureReading`, then calls `RecordTemperature` on the generated client. gRPC serializes the message and sends it over HTTP/2.
-4. The server implements the generated `TemperatureServiceServer` interface. Its `RecordTemperature` method receives the decoded reading, logs `device-123: 4.7°C`, and returns `{accepted: true}`.
-5. The generated client decodes that response, and the test program prints `accepted`.
+3. The client fills a `TemperatureReading` in each goroutine, then calls `RecordTemperature` on one shared generated client. gRPC serializes each message and sends it over HTTP/2.
+4. The server implements the generated `TemperatureServiceServer` interface. Its `RecordTemperature` method receives the decoded reading, logs it, and returns `{accepted: true}`.
+5. The generated client decodes that response, and the goroutine prints whether it was accepted. `WaitGroup` keeps the process alive until all 10 calls finish.

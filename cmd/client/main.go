@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -28,14 +29,24 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	resp, err := client.RecordTemperature(ctx, &temperaturev1.TemperatureReading{
-		DeviceId:     "device-123",
-		TemperatureC: 4.7,
-		Timestamp:    time.Now().Unix(),
-	})
-	if err != nil {
-		log.Fatalf("RecordTemperature: %v", err)
-	}
+	var wg sync.WaitGroup
+	for i := 1; i <= 10; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
 
-	fmt.Printf("accepted: %t\n", resp.GetAccepted())
+			deviceID := fmt.Sprintf("device-%d", n)
+			resp, err := client.RecordTemperature(ctx, &temperaturev1.TemperatureReading{
+				DeviceId:     deviceID,
+				TemperatureC: 4.0 + float64(n)/10,
+				Timestamp:    time.Now().Unix(),
+			})
+			if err != nil {
+				log.Printf("%s: %v", deviceID, err)
+				return
+			}
+			fmt.Printf("%s accepted: %t\n", deviceID, resp.GetAccepted())
+		}(i)
+	}
+	wg.Wait()
 }
