@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package temperature.v1;
+
+option go_package = "temperature-sensors/gen/temperature/v1;temperaturev1";
+
+// TemperatureService accepts temperature readings from devices.
+service TemperatureService {
+  // RecordTemperature accepts one reading.
+  rpc RecordTemperature(TemperatureReading) returns (RecordTemperatureResponse);
+}
+
+// TemperatureReading is one sample from a device.
+message TemperatureReading {
+  string device_id = 1;
+  double temperature_c = 2;
+  int64 timestamp = 3;
+}
+
+// RecordTemperatureResponse reports whether the server accepted the reading.
+message RecordTemperatureResponse {
+  bool accepted = 1;
+}
