@@ -20,10 +20,14 @@ import (
 func main() {
 	addr := flag.String("addr", "127.0.0.1:50051", "gRPC server address")
 	devices := flag.Int("devices", 10, "number of simulated devices")
+	duration := flag.Duration("duration", 0, "spread device sends across this duration (for example 60s); 0 sends all at once")
 	flag.Parse()
 
 	if *devices < 1 {
 		log.Fatal("devices must be at least 1")
+	}
+	if *duration < 0 {
+		log.Fatal("duration cannot be negative")
 	}
 
 	conn, err := grpc.NewClient(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -34,7 +38,9 @@ func main() {
 
 	client := temperaturev1.NewTemperatureServiceClient(conn)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Allow the full send window plus 30 seconds for the final requests to finish.
+	timeout := 30*time.Second + *duration
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	start := time.Now()
@@ -49,6 +55,20 @@ func main() {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
+
+			if *duration > 0 {
+				delay := time.Duration(int64(*duration) * int64(n-1) / int64(*devices))
+				timer := time.NewTimer(delay)
+				defer timer.Stop()
+
+				select {
+				case <-timer.C:
+				case <-ctx.Done():
+					failed.Add(1)
+					errorCounts[codes.DeadlineExceeded].Add(1)
+					return
+				}
+			}
 
 			deviceID := fmt.Sprintf("device-%d", n)
 			resp, err := client.RecordTemperature(ctx, &temperaturev1.TemperatureReading{
@@ -79,6 +99,11 @@ func main() {
 	readingsPerSecond := float64(successCount) / elapsed.Seconds()
 
 	fmt.Printf("Devices: %d\n", *devices)
+	if *duration > 0 {
+		fmt.Printf("Send window: %s\n", *duration)
+	} else {
+		fmt.Println("Send window: burst")
+	}
 	fmt.Printf("Successful: %d\n", successCount)
 	fmt.Printf("Failed: %d\n", failed.Load())
 
