@@ -35,8 +35,7 @@ type temperatureServer struct {
 
 func (s *temperatureServer) RecordTemperature(
 	_ context.Context,
-	reading *temperaturev1.TemperatureReading,
+	_ *temperaturev1.TemperatureReading,
 ) (*temperaturev1.RecordTemperatureResponse, error) {
-	log.Printf("%s: %.1f°C", reading.GetDeviceId(), reading.GetTemperatureC())
 	return &temperaturev1.RecordTemperatureResponse{Accepted: true}, nil
 }
