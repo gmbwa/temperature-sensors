@@ -95,3 +95,30 @@ Use the same `-addr` flag if the server is not on the default port.
 3. The client fills a `TemperatureReading` in each goroutine, then calls `RecordTemperature` on one shared generated client. gRPC serializes each message and sends it over HTTP/2.
 4. The server implements the generated `TemperatureServiceServer` interface. Its `RecordTemperature` method receives the decoded reading, logs it, and returns `{accepted: true}`.
 5. The generated client decodes that response, and the goroutine prints whether it was accepted. `WaitGroup` keeps the process alive until all configured device calls finish.
+
+
+## k6 gRPC load test
+
+The Go client simulates devices. The k6 test under `loadtest/temperature.js` is for repeatable performance measurement, including latency percentiles and checks.
+
+Install k6 on macOS:
+
+```bash
+brew install k6
+```
+
+Start the gRPC server in one terminal:
+
+```bash
+go run ./cmd/server
+```
+
+Then run the target-rate test from the repository root:
+
+```bash
+k6 run loadtest/temperature.js
+```
+
+The test targets 8,333 unary gRPC readings per second for 60 seconds, approximately the average traffic from 500,000 devices reporting once per minute. It checks that gRPC calls succeed and readings are accepted, and includes a p95 gRPC request-duration threshold of 100 ms.
+
+The load generator and server run on the same machine in this local test, so results measure the combined local setup rather than isolated server capacity.
