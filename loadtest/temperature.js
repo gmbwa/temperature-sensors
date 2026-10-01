@@ -21,8 +21,13 @@ export const options = {
   },
 };
 
+let connected = false;
+
 export default function () {
-  client.connect('127.0.0.1:50051', { plaintext: true });
+  if (!connected) {
+    client.connect('127.0.0.1:50051', { plaintext: true });
+    connected = true;
+  }
 
   const response = client.invoke(
     'temperature.v1.TemperatureService/RecordTemperature',
@@ -37,6 +42,4 @@ export default function () {
     'gRPC status is OK': (r) => r && r.status === grpc.StatusOK,
     'reading accepted': (r) => r && r.message && r.message.accepted === true,
   });
-
-  client.close();
 }
