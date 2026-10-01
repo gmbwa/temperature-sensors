@@ -2,7 +2,7 @@ import grpc from 'k6/net/grpc';
 import { check } from 'k6';
 
 const client = new grpc.Client();
-client.load(['proto'], 'temperature/v1/temperature.proto');
+client.load(['../proto'], 'temperature/v1/temperature.proto');
 
 export const options = {
   scenarios: {
