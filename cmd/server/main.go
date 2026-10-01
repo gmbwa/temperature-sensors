@@ -14,7 +14,7 @@ import (
 
 const (
 	readingBufferSize = 10000
-	workerCount       = 10
+	workerCount       = 20
 )
 
 func main() {
