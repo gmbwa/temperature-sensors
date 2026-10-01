@@ -11,6 +11,8 @@ import (
 	temperaturev1 "temperature-sensors/gen/temperature/v1"
 )
 
+const readingBufferSize = 10000
+
 func main() {
 	addr := flag.String("addr", "127.0.0.1:50051", "gRPC listen address")
 	flag.Parse()
@@ -20,8 +22,13 @@ func main() {
 		log.Fatalf("listen %s: %v", *addr, err)
 	}
 
+	readings := make(chan *temperaturev1.TemperatureReading, readingBufferSize)
+	go processReadings(readings)
+
 	grpcServer := grpc.NewServer()
-	temperaturev1.RegisterTemperatureServiceServer(grpcServer, &temperatureServer{})
+	temperaturev1.RegisterTemperatureServiceServer(grpcServer, &temperatureServer{
+		readings: readings,
+	})
 
 	log.Printf("TemperatureService listening on %s", *addr)
 	if err := grpcServer.Serve(lis); err != nil {
@@ -31,11 +38,24 @@ func main() {
 
 type temperatureServer struct {
 	temperaturev1.UnimplementedTemperatureServiceServer
+	readings chan<- *temperaturev1.TemperatureReading
 }
 
 func (s *temperatureServer) RecordTemperature(
-	_ context.Context,
-	_ *temperaturev1.TemperatureReading,
+	ctx context.Context,
+	reading *temperaturev1.TemperatureReading,
 ) (*temperaturev1.RecordTemperatureResponse, error) {
-	return &temperaturev1.RecordTemperatureResponse{Accepted: true}, nil
+	select {
+	case s.readings <- reading:
+		return &temperaturev1.RecordTemperatureResponse{Accepted: true}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func processReadings(readings <-chan *temperaturev1.TemperatureReading) {
+	for range readings {
+		// Processing will be added in the next phase. For now, consuming the
+		// reading lets us measure the cost of the buffered ingestion pipeline.
+	}
 }
