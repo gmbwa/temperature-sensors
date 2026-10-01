@@ -12,7 +12,10 @@ import (
 	temperaturev1 "temperature-sensors/gen/temperature/v1"
 )
 
-const readingBufferSize = 10000
+const (
+	readingBufferSize = 10000
+	workerCount       = 10
+)
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:50051", "gRPC listen address")
@@ -24,7 +27,9 @@ func main() {
 	}
 
 	readings := make(chan *temperaturev1.TemperatureReading, readingBufferSize)
-	go processReadings(readings)
+	for i := 0; i < workerCount; i++ {
+		go processReadings(readings)
+	}
 
 	grpcServer := grpc.NewServer()
 	temperaturev1.RegisterTemperatureServiceServer(grpcServer, &temperatureServer{
@@ -56,8 +61,8 @@ func (s *temperatureServer) RecordTemperature(
 
 func processReadings(readings <-chan *temperaturev1.TemperatureReading) {
 	for range readings {
-		// Simulate slow downstream processing so we can observe the channel
-		// filling and backpressure propagating to the gRPC handlers.
+		// Keep the same artificial processing cost as the one-worker experiment.
+		// Multiple workers now consume from the same channel concurrently.
 		time.Sleep(time.Millisecond)
 	}
 }
