@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"net"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -55,7 +56,8 @@ func (s *temperatureServer) RecordTemperature(
 
 func processReadings(readings <-chan *temperaturev1.TemperatureReading) {
 	for range readings {
-		// Processing will be added in the next phase. For now, consuming the
-		// reading lets us measure the cost of the buffered ingestion pipeline.
+		// Simulate slow downstream processing so we can observe the channel
+		// filling and backpressure propagating to the gRPC handlers.
+		time.Sleep(time.Millisecond)
 	}
 }
