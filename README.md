@@ -179,3 +179,11 @@ At `RATE=20000`, k6 completed **1,179,518 iterations (19,655/sec)** with **6.75 
 ### 25,000/sec arrival-rate experiment (batch size 500)
 
 At `RATE=25000`, k6 completed **1,356,794 iterations (22,612/sec)**, with **34.99 ms gRPC p95**, **143,038 dropped iterations**, and **100% checks**. The table was confirmed truncated before the run; PostgreSQL contained **1,356,794 rows**, exactly matching the completed iteration count (zero missing rows in this run). Compared with 20k/sec, increased latency and dropped iterations suggest saturation of the local end-to-end test setup, but do not isolate a PostgreSQL bottleneck. The gRPC acknowledgment occurs before persistence.
+
+### Node.js gRPC/PostgreSQL COPY comparison (local)
+
+The `node/` implementation uses the same protobuf service and PostgreSQL table, with a bounded in-memory queue, 20 COPY workers, shared batches of up to 500 readings, and a 50 ms flush interval. Its acknowledgment means queued in memory, not durably committed. Run it with `cd node && npm install && npm start` (stop Go first); benchmark from the repository root.
+
+At `RATE=10000`, a full 60-second k6 run completed **595,484 iterations (9,925/sec)** with **9.26 ms gRPC p95**, **4,517 dropped iterations**, and **100% RPC checks**. The reported PostgreSQL count was **595,484 rows**, matching completed iterations; table truncation immediately before this run was not explicitly confirmed. Earlier partial 10k/sec runs were manually interrupted and are not sustained results.
+
+At `RATE=20000`, earlier Node implementations with per-worker batches completed approximately **9,069–9,457/sec** with **204–225 ms gRPC p95** and frequent connection establishment errors. Those runs are not a controlled comparison with the newer shared-batch implementation. At higher loads, k6 can create many gRPC connections (one per VU), and the load generator, server and PostgreSQL share the same local machine. More sustained testing and active event-loop metrics are needed before attributing the difference to language runtime performance.
