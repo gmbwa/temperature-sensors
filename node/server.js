@@ -13,6 +13,8 @@ import dotenv from 'dotenv';
 const here = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(here, '../.env') });
 const NO_DB = process.env.NO_DB === '1';
+const NO_COPY = process.env.NO_COPY === '1';
+if (NO_DB && NO_COPY) throw new Error('Use either NO_DB=1 or NO_COPY=1, not both');
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!NO_DB && !DATABASE_URL) throw new Error('DATABASE_URL is required');
 // Split the same total queue and database concurrency across two cluster workers.
@@ -83,6 +85,7 @@ function csvField(value) {
 }
 
 async function saveBatch(batch) {
+  if (NO_COPY) return;
   const client = await pool.connect();
   try {
     const lines = batch.map(r =>
@@ -103,7 +106,7 @@ async function worker(id) {
     const started = performance.now();
     try {
       await saveBatch(batch);
-      persisted += batch.length;
+      if (!NO_COPY) persisted += batch.length;
     } catch (err) {
       failed += batch.length;
       console.error('Worker', id, 'failed batch of', batch.length, err);
@@ -138,8 +141,9 @@ server.addService(proto.TemperatureService.service, {
 
 try {
   if (!NO_DB) {
-    await pool.query('SELECT 1');
+    if (!NO_COPY) await pool.query('SELECT 1');
     for (let i = 0; i < WORKERS; i++) worker(i).catch(err => console.error('Worker stopped', i, err));
+    if (NO_COPY) console.log('NO_COPY=1 benchmark mode: queue and workers active; database writes skipped');
   } else {
     console.log('NO_DB=1 benchmark mode: readings acknowledged without persistence');
   }
