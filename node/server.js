@@ -74,7 +74,7 @@ setInterval(() => {
     eventLoopP95Ms,
   }));
   accepted = rejected = persisted = failed = batchCount = batchMs = batchRows = 0;
-}, 1000).unref();
+}, 10000).unref();
 
 function csvField(value) {
   const s = String(value);
