@@ -151,3 +151,14 @@ go run ./cmd/server
 ```
 
 `.env` is already excluded by `.gitignore`; do not commit real credentials. The server reads `DATABASE_URL` from its environment. A successful gRPC acknowledgement currently means the reading entered the in-memory queue, **not** that PostgreSQL committed it.
+
+## PostgreSQL persistence benchmark (local k6)
+
+Same k6 scenario: 8,333 scheduled iterations/sec for 60 seconds, up to 2,000 VUs. Tests run locally with PostgreSQL in Docker. Throughput is completed k6 iterations per second, **not** maximum server capacity.
+
+| Persistence strategy | Completed/sec | gRPC p95 | Dropped iterations | Executed RPC checks | Verified PostgreSQL rows |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 20 workers, one INSERT per reading | 4,719 | 602.85 ms | 210,222 | 100% | 289,747 new rows (plus 10 existing) |
+| 20 workers, CopyFrom batches of up to 100, 50 ms flush | 8,188 | 1.45 ms | 8,147 | 100% | 491,829 (table truncated before run) |
+
+Both tests matched their expected database row counts after the workers drained. This verifies persistence in those runs, **not** crash durability: the server acknowledges once a reading enters an in-memory channel, and database failures are logged without retry.
