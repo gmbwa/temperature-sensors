@@ -30,6 +30,7 @@ const idleWorkers = [];
 let pendingReadings = 0;
 let accepted = 0, rejected = 0, persisted = 0, failed = 0;
 let batchCount = 0, batchMs = 0, batchRows = 0;
+let csvPrepMs = 0, copyMs = 0, dbAcquireMs = 0, timedBatches = 0;
 const loopDelay = monitorEventLoopDelay({ resolution: 20 });
 loopDelay.enable();
 let previousELU = performance.eventLoopUtilization();
@@ -73,10 +74,14 @@ setInterval(() => {
     avgBatchSize: batchCount ? Math.round(batchRows / batchCount) : 0,
     queuedBatches: batchQueue.length,
     avgBatchMs: batchCount ? Math.round(batchMs / batchCount) : 0,
+    avgDbAcquireMs: timedBatches ? Number((dbAcquireMs / timedBatches).toFixed(2)) : 0,
+    avgCsvPrepMs: timedBatches ? Number((csvPrepMs / timedBatches).toFixed(2)) : 0,
+    avgCopyMs: timedBatches ? Number((copyMs / timedBatches).toFixed(2)) : 0,
     eventLoopUtilization: Number(elu.utilization.toFixed(3)),
     eventLoopP95Ms,
   }));
   accepted = rejected = persisted = failed = batchCount = batchMs = batchRows = 0;
+  csvPrepMs = copyMs = dbAcquireMs = timedBatches = 0;
 }, 10000).unref();
 
 function csvField(value) {
@@ -86,15 +91,25 @@ function csvField(value) {
 
 async function saveBatch(batch) {
   if (NO_COPY) return;
+  const acquireStarted = performance.now();
   const client = await pool.connect();
+  dbAcquireMs += performance.now() - acquireStarted;
+  timedBatches++;
   try {
+    const prepStarted = performance.now();
     const lines = batch.map(r =>
       [csvField(r.device_id), Number(r.temperature_c), new Date(Number(r.timestamp) * 1000).toISOString()].join(',') + '\n'
     );
-    await pipeline(
+    csvPrepMs += performance.now() - prepStarted;
+    const copyStarted = performance.now();
+    try {
+      await pipeline(
       Readable.from(lines),
       client.query(copyFrom('COPY temperature_readings (device_id, temperature_c, recorded_at) FROM STDIN WITH (FORMAT csv)'))
-    );
+      );
+    } finally {
+      copyMs += performance.now() - copyStarted;
+    }
   } finally {
     client.release();
   }
