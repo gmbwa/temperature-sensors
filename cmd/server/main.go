@@ -19,7 +19,7 @@ import (
 const (
 	readingBufferSize = 10000
 	workerCount       = 20
-	batchSize         = 100
+	batchSize         = 500
 	batchMaxWait      = 50 * time.Millisecond
 )
 
