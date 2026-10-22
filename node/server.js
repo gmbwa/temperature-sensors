@@ -1,4 +1,6 @@
 import cluster from 'node:cluster';
+import inspector from 'node:inspector';
+import { writeFile } from 'node:fs/promises';
 import grpc from '@grpc/grpc-js';
 import protoLoader from '@grpc/proto-loader';
 import pg from 'pg';
@@ -11,6 +13,39 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
 const here = dirname(fileURLToPath(import.meta.url));
+// Capture a worker CPU profile on demand without terminating the process.
+// Start with PROFILE_CPU=1; after the load test send SIGUSR2 to each worker.
+if (process.env.PROFILE_CPU === '1') {
+  const session = new inspector.Session();
+  session.connect();
+  const post = (method, params = {}) => new Promise((resolve, reject) =>
+    session.post(method, params, (err, result) => err ? reject(err) : resolve(result))
+  );
+  let capturing = false;
+  const ready = (async () => {
+    await post('Profiler.enable');
+    await post('Profiler.start');
+    console.log('CPU profiler started for worker', process.pid);
+  })();
+  process.on('SIGUSR2', async () => {
+    if (capturing) return;
+    capturing = true;
+    try {
+      await ready;
+      const { profile } = await post('Profiler.stop');
+      const filename = resolve(here, `worker-${process.pid}-${Date.now()}.cpuprofile`);
+      await writeFile(filename, JSON.stringify(profile));
+      console.log('CPU profile saved:', filename);
+      await post('Profiler.start');
+    } catch (err) {
+      console.error('CPU profile capture failed:', err);
+    } finally {
+      capturing = false;
+    }
+  });
+  ready.catch(err => console.error('CPU profiler startup failed:', err));
+}
+
 dotenv.config({ path: resolve(here, '../.env') });
 const NO_DB = process.env.NO_DB === '1';
 const NO_COPY = process.env.NO_COPY === '1';
