@@ -163,3 +163,7 @@ Same k6 scenario: 8,333 scheduled iterations/sec for 60 seconds, up to 2,000 VUs
 | 20 workers, CopyFrom batches of up to 500, 50 ms flush | 8,270 | 270.54 µs | 3,802 | 100% | 496,182 (table truncated before run) |
 
 Both tests matched their expected database row counts after the workers drained. This verifies persistence in those runs, **not** crash durability: the server acknowledges once a reading enters an in-memory channel, and database failures are logged without retry.
+
+### Higher arrival-rate experiment (batch size 500)
+
+With 20 workers, 500-row maximum CopyFrom batches and 50 ms flush timeout, `RATE=12000 k6 run loadtest/temperature.js` yielded **714,790 completed iterations (11,913/sec)**, **1.65 ms gRPC p95**, **5,215 dropped iterations**, and **100% checks**. After truncating the table before the test and allowing the queue to drain, PostgreSQL contained **714,790 rows**. This validates matching accepted/persisted counts for this run, but the RPC acknowledgment precedes the database commit; no crash durability is implied. The result is not a measured maximum throughput.
