@@ -13,32 +13,53 @@ dotenv.config({ path: resolve(here, '../.env') });
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
 const CAPACITY = 10000, WORKERS = 20, BATCH_SIZE = 500, WAIT_MS = 50;
+// Bounded FIFO with amortized O(1) dequeue; no timer per reading.
 const queue = [];
+let head = 0;
 const waiting = [];
 const pool = new pg.Pool({ connectionString: DATABASE_URL, max: 20 });
+let accepted = 0, rejected = 0, persisted = 0, failed = 0;
+let batchCount = 0, batchMs = 0;
 
-function take(timeoutMs) {
-  if (queue.length) return Promise.resolve(queue.shift());
-  return new Promise(resolve => {
-    const receive = value => {
-      clearTimeout(timer);
-      resolve(value);
-    };
-    const timer = setTimeout(() => {
-      const index = waiting.indexOf(receive);
-      if (index >= 0) waiting.splice(index, 1);
-      resolve(null);
-    }, timeoutMs);
-    waiting.push(receive);
-  });
+function depth() { return queue.length - head; }
+function dequeue() {
+  if (!depth()) return null;
+  const item = queue[head++];
+  if (head >= 4096 && head * 2 >= queue.length) {
+    queue.splice(0, head);
+    head = 0;
+  }
+  return item;
 }
-
 function enqueue(reading) {
-  if (waiting.length) waiting.shift()(reading);
-  else if (queue.length < CAPACITY) queue.push(reading);
-  else return false;
+  if (depth() >= CAPACITY) { rejected++; return false; }
+  queue.push(reading);
+  accepted++;
+  if (waiting.length) waiting.shift()();
   return true;
 }
+function waitForData(ms) {
+  if (depth()) return Promise.resolve();
+  return new Promise(resolve => {
+    const wake = () => { clearTimeout(timer); resolve(); };
+    const timer = setTimeout(() => {
+      const i = waiting.indexOf(wake);
+      if (i >= 0) waiting.splice(i, 1);
+      resolve();
+    }, ms);
+    waiting.push(wake);
+  });
+}
+setInterval(() => {
+  console.log(JSON.stringify({
+    accepted, rejected, persisted, failed, queueDepth: depth(),
+    dbActive: pool.totalCount - pool.idleCount,
+    dbWaiting: pool.waitingCount,
+    batches: batchCount,
+    avgBatchMs: batchCount ? Math.round(batchMs / batchCount) : 0,
+  }));
+  accepted = rejected = persisted = failed = batchCount = batchMs = 0;
+}, 1000).unref();
 
 function csvField(value) {
   const s = String(value);
@@ -61,19 +82,25 @@ async function saveBatch(batch) {
 }
 
 async function worker(id) {
-  let batch = [];
-  let deadline = Date.now() + WAIT_MS;
   while (true) {
-    const remaining = Math.max(0, deadline - Date.now());
-    const reading = await take(remaining);
-    if (reading) batch.push(reading);
-    if (batch.length >= BATCH_SIZE || Date.now() >= deadline) {
-      if (batch.length) {
-        try { await saveBatch(batch); }
-        catch (err) { console.error('Worker', id, 'failed batch of', batch.length, err); }
-        batch = [];
-      }
-      deadline = Date.now() + WAIT_MS;
+    await waitForData(WAIT_MS);
+    const batch = [];
+    while (batch.length < BATCH_SIZE) {
+      const reading = dequeue();
+      if (!reading) break;
+      batch.push(reading);
+    }
+    if (!batch.length) continue;
+    const started = performance.now();
+    try {
+      await saveBatch(batch);
+      persisted += batch.length;
+    } catch (err) {
+      failed += batch.length;
+      console.error('Worker', id, 'failed batch of', batch.length, err);
+    } finally {
+      batchCount++;
+      batchMs += performance.now() - started;
     }
   }
 }
