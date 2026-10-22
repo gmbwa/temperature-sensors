@@ -8,7 +8,7 @@ export const options = {
   scenarios: {
     temperature_readings: {
       executor: 'constant-arrival-rate',
-      rate: 8333,
+      rate: Number(__ENV.RATE || 8333),
       timeUnit: '1s',
       duration: '60s',
       preAllocatedVUs: 100,
