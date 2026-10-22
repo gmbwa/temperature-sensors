@@ -223,3 +223,7 @@ Full 60-second `RATE=15000` / `NO_DB=1` run completed **858,011 iterations (14,2
 ### Node.js two-process cluster WITH PostgreSQL at 14,000/sec target (configuration changed unintentionally)
 
 User ran `npm run start:cluster` (without `NO_DB=1`), so this is a **database-enabled** run, not the intended 14k NO_DB isolation test. Full 60-second `RATE=14000`: **438,651 completed iterations (7,285/sec)**, gRPC p95 **539.28 ms** (failed `<100 ms`), **401,089 dropped iterations**, k6 reached 2,000 VUs, and 100% checks on completed iterations. Both Node processes reached ELU ~1.0; event-loop p95 reached 517 ms; batch durations averaged as high as 404 ms; `dbActive` typically 1–5, `dbWaiting=0`, no reported failed batches; queues drained at end. Cannot directly compare as controlled 14k vs 15k NO_DB A/B due to differing requested rates and workload. Next rerun 14k explicitly with `NO_DB=1` before interpreting threshold.
+
+### Node.js two-process cluster NO_DB at 14,000/sec target (ulimit 8192)
+
+Corrected 60-second `RATE=14000` / `NO_DB=1` run: **825,706 completed iterations (13,762/sec)**, gRPC p95 **11.42 ms** (passed `<100 ms`), **14,301 dropped iterations** (~1.7% of 840,000 scheduled), 100% checks on completed iterations, and maximum allocated k6 VUs 615. Node ELU during sustained load ~0.54–0.69, event-loop p95 ~21–26 ms; no rejections and no DB writes by design. Compare NO_DB 15k: 14,260/sec, p95 85.22 ms, 42,984 dropped. A single run at each rate is insufficient to establish a sharp performance boundary; repeated runs would help.
