@@ -191,3 +191,7 @@ At `RATE=20000`, earlier Node implementations with per-worker batches completed 
 ### Node.js two-process cluster, 15,000/sec target (local)
 
 With `npm run start:cluster` (two Node.js processes, 10 database workers and 5,000 queue slots per process), `RATE=15000` ran the full 60 seconds and completed **615,725 iterations (10,247/sec)**. gRPC p95 was **327.06 ms** (failed the 100 ms threshold), **284,288 iterations were dropped**, and k6 hit the **2,000 VU** limit. All **615,725 completed requests** passed both RPC checks; the reported PostgreSQL row count was **615,725**, matching completed iterations (assuming the table was cleared before this run). This is not a controlled same-target comparison against the one-process run, and does not isolate whether the limit is in the Node server, cluster port sharing, or the local k6/OS setup.
+
+### Node.js two-process cluster, 12,000/sec target (local)
+
+Full 60-second `RATE=12000` run: **538,932 completed iterations (8,962/sec)**, gRPC p95 **361.76 ms** (failed `<100 ms`), **181,082 dropped iterations**, k6 reached **2,000 VUs**, and 100% of checks on completed iterations passed. User reported **538,932 PostgreSQL rows**, matching completions (assuming a clean table and completed writes). This run performed worse than the earlier 15k-target cluster test; causes not yet isolated. Investigate per-process event-loop metrics and machine-level contention before tuning further.
