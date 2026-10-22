@@ -17,9 +17,20 @@ const queue = [];
 const waiting = [];
 const pool = new pg.Pool({ connectionString: DATABASE_URL, max: 20 });
 
-function take() {
+function take(timeoutMs) {
   if (queue.length) return Promise.resolve(queue.shift());
-  return new Promise(resolve => waiting.push(resolve));
+  return new Promise(resolve => {
+    const receive = value => {
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      const index = waiting.indexOf(receive);
+      if (index >= 0) waiting.splice(index, 1);
+      resolve(null);
+    }, timeoutMs);
+    waiting.push(receive);
+  });
 }
 
 function enqueue(reading) {
@@ -54,10 +65,7 @@ async function worker(id) {
   let deadline = Date.now() + WAIT_MS;
   while (true) {
     const remaining = Math.max(0, deadline - Date.now());
-    const reading = await Promise.race([
-      take(),
-      new Promise(resolve => setTimeout(() => resolve(null), remaining)),
-    ]);
+    const reading = await take(remaining);
     if (reading) batch.push(reading);
     if (batch.length >= BATCH_SIZE || Date.now() >= deadline) {
       if (batch.length) {
