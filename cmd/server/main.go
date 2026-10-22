@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 
 	temperaturev1 "temperature-sensors/gen/temperature/v1"
@@ -23,6 +24,9 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:50051", "gRPC listen address")
 	flag.Parse()
 
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		log.Fatalf("load .env: %v", err)
+	}
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Fatal("DATABASE_URL is required")
