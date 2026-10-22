@@ -199,3 +199,7 @@ Full 60-second `RATE=12000` run: **538,932 completed iterations (8,962/sec)**, g
 ### Node.js cluster repeat at 12,000/sec (local)
 
 Second full 60-second `RATE=12000` run: **656,902 completed iterations (10,909/sec)**, gRPC p95 **216.58 ms** (failed `<100 ms`), **63,102 dropped iterations**, k6 reached **2,000 VUs**, and 100% of checks on completed iterations passed. Both process logs showed event-loop utilization increasing from ~0.83–0.87 to ~0.96–0.97 and event-loop p95 increasing to 106–151 ms. `rejected=0`, `failed=0`, and `dbWaiting=0` in provided samples; DB row count not provided for this run. The result improves over the first 12k run without a confirmed configuration change; repeatability and shared-machine contention remain concerns.
+
+### Node.js cluster third run at 12,000/sec (local)
+
+Third full 60-second `RATE=12000` run: **659,349 completed iterations (10,960/sec)**, gRPC p95 **224.69 ms** (failed `<100 ms`), **61,417 dropped iterations**, k6 reached **2,000 VUs**, and 100% of checks on completed iterations passed. User reported **659,349 PostgreSQL rows**, matching completed iterations (assuming a clean table and fully drained writes). Two processes had balanced acceptance and event-loop utilization climbing to ~0.98–0.99, with p95 event-loop delay peaking at ~127–137 ms; reported `rejected=0`, `failed=0`, `dbWaiting=0`. Results similar to second 12k run, suggesting ~10.9k/sec observed throughput under these local conditions, but not meeting latency or offered-load targets.
