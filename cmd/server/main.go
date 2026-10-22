@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
@@ -18,6 +19,8 @@ import (
 const (
 	readingBufferSize = 10000
 	workerCount       = 20
+	batchSize         = 100
+	batchMaxWait      = 50 * time.Millisecond
 )
 
 func main() {
@@ -80,15 +83,57 @@ func (s *temperatureServer) RecordTemperature(
 }
 
 func processReadings(db *pgxpool.Pool, readings <-chan *temperaturev1.TemperatureReading) {
-	for reading := range readings {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_, err := db.Exec(ctx,
-			"INSERT INTO temperature_readings (device_id, temperature_c, recorded_at) VALUES ($1, $2, to_timestamp($3))",
-			reading.GetDeviceId(), reading.GetTemperatureC(), reading.GetTimestamp(),
+	batch := make([]*temperaturev1.TemperatureReading, 0, batchSize)
+	timer := time.NewTimer(batchMaxWait)
+	defer timer.Stop()
+
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		rows := make([][]any, 0, len(batch))
+		for _, reading := range batch {
+			rows = append(rows, []any{
+				reading.GetDeviceId(),
+				reading.GetTemperatureC(),
+				time.Unix(reading.GetTimestamp(), 0),
+			})
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		count, err := db.CopyFrom(ctx,
+			pgx.Identifier{"temperature_readings"},
+			[]string{"device_id", "temperature_c", "recorded_at"},
+			pgx.CopyFromRows(rows),
 		)
 		cancel()
 		if err != nil {
-			log.Printf("database insert failed for device %s: %v", reading.GetDeviceId(), err)
+			log.Printf("batch insert failed (%d readings): %v", len(batch), err)
+		} else if int(count) != len(batch) {
+			log.Printf("batch insert incomplete: persisted %d of %d", count, len(batch))
 		}
+		batch = batch[:0]
+	}
+
+	for {
+		select {
+		case reading, ok := <-readings:
+			if !ok {
+				flush()
+				return
+			}
+			batch = append(batch, reading)
+			if len(batch) >= batchSize {
+				flush()
+			}
+		case <-timer.C:
+			flush()
+		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(batchMaxWait)
 	}
 }
