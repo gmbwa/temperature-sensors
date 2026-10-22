@@ -175,3 +175,7 @@ At `RATE=15000`, k6 completed **897,166 iterations (14,953/sec)**, with **1.19 m
 ### 20,000/sec arrival-rate experiment (batch size 500)
 
 At `RATE=20000`, k6 completed **1,179,518 iterations (19,655/sec)** with **6.75 ms gRPC p95**, **20,479 dropped iterations**, and **100% RPC checks**. The user confirmed the table was truncated before this run. PostgreSQL contained **1,179,518 rows**, exactly matching completed requests (zero missing rows in this run). The increased p95 relative to 15k/sec suggests greater load pressure; no specific bottleneck has been identified. RPC acknowledgments remain non-durable.
+
+### 25,000/sec arrival-rate experiment (batch size 500)
+
+At `RATE=25000`, k6 completed **1,356,794 iterations (22,612/sec)**, with **34.99 ms gRPC p95**, **143,038 dropped iterations**, and **100% checks**. PostgreSQL row count was reported as **1,356,794**, matching the completed iteration count; confirmation that the table was truncated before the run is pending. Compared with 20k/sec, increased latency and dropped iterations suggest saturation of the local end-to-end test setup, but do not isolate a PostgreSQL bottleneck. The gRPC acknowledgment occurs before persistence.
