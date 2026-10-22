@@ -1,3 +1,4 @@
+import cluster from 'node:cluster';
 import grpc from '@grpc/grpc-js';
 import protoLoader from '@grpc/proto-loader';
 import pg from 'pg';
@@ -13,7 +14,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(here, '../.env') });
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
-const CAPACITY = 10000, WORKERS = 20, BATCH_SIZE = 500, WAIT_MS = 50;
+// Split the same total queue and database concurrency across two cluster workers.
+const CLUSTERED = cluster.isWorker;
+const CAPACITY = CLUSTERED ? 5000 : 10000;
+const WORKERS = CLUSTERED ? 10 : 20;
+const BATCH_SIZE = 500, WAIT_MS = 50;
 // Shared batch collector: one 50ms flush timer, 20 concurrent COPY workers.
 const pool = new pg.Pool({ connectionString: DATABASE_URL, max: WORKERS });
 let currentBatch = [];
@@ -58,7 +63,7 @@ setInterval(() => {
   const eventLoopP95Ms = Number.isFinite(loopDelay.percentile(95)) ? Math.round(loopDelay.percentile(95) / 1e6) : 0;
   loopDelay.reset();
   console.log(JSON.stringify({
-    accepted, rejected, persisted, failed, queueDepth: depth(),
+    pid: process.pid, accepted, rejected, persisted, failed, queueDepth: depth(),
     dbActive: pool.totalCount - pool.idleCount,
     dbWaiting: pool.waitingCount,
     batches: batchCount,
