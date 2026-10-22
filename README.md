@@ -211,3 +211,7 @@ With `NO_DB=1 npm run start:cluster`, full 60-second `RATE=12000` k6 run complet
 ### Node.js two-process cluster NO_DB at 25,000/sec target (local)
 
 Full 60-second `RATE=25000` with `NO_DB=1`: **976,936 completed iterations (16,213/sec)**, gRPC p95 **228.91 ms** (failed `<100 ms`), **523,891 dropped iterations**, and 100% checks on completed iterations. k6 reached 2,000 VUs by ~3 seconds. Both Node processes showed event-loop utilization ~0.985–0.999 during load, event-loop p95 ~68–82 ms (PID 93303) and ~142–200 ms (PID 93302). `persisted=0` by design. The test confirms that removing persistence does not remove the high-load bottleneck, although server-vs-k6/shared-machine contention is not isolated. Compare against NO_DB 12k: 11,788/sec and 3.48 ms p95.
+
+### Node.js two-process cluster NO_DB at 25,000/sec with increased file-descriptor limit
+
+With `ulimit -n 8192` in both Node and k6 shells (previous test used 256), full 60-second `RATE=25000` / `NO_DB=1` run completed **1,040,416 iterations (17,318/sec)**, gRPC p95 **192.69 ms** (failed `<100 ms`), **459,537 dropped iterations**, and 100% checks on completed iterations. k6 again reached 2,000 VUs. Both Node processes reached ~0.995–1.0 event-loop utilization, event-loop p95 ~87–112 ms during sustained load, with no DB connections or app-level rejections. Previous 256-limit run: 976,936 (16,213/sec), p95 228.91 ms, 523,891 dropped. Improvement is associated with the changed limit but a single A/B run cannot establish causality; benchmark variability and shared-machine contention remain possible.
