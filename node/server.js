@@ -14,46 +14,44 @@ dotenv.config({ path: resolve(here, '../.env') });
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
 const CAPACITY = 10000, WORKERS = 20, BATCH_SIZE = 500, WAIT_MS = 50;
-// Bounded FIFO with amortized O(1) dequeue; no timer per reading.
-const queue = [];
-let head = 0;
-const waiting = [];
-const pool = new pg.Pool({ connectionString: DATABASE_URL, max: 20 });
+// Shared batch collector: one 50ms flush timer, 20 concurrent COPY workers.
+const pool = new pg.Pool({ connectionString: DATABASE_URL, max: WORKERS });
+let currentBatch = [];
+const batchQueue = [];
+const idleWorkers = [];
+let pendingReadings = 0;
 let accepted = 0, rejected = 0, persisted = 0, failed = 0;
-let batchCount = 0, batchMs = 0;
+let batchCount = 0, batchMs = 0, batchRows = 0;
 const loopDelay = monitorEventLoopDelay({ resolution: 20 });
 loopDelay.enable();
 let previousELU = performance.eventLoopUtilization();
 
-function depth() { return queue.length - head; }
-function dequeue() {
-  if (!depth()) return null;
-  const item = queue[head++];
-  if (head >= 4096 && head * 2 >= queue.length) {
-    queue.splice(0, head);
-    head = 0;
-  }
-  return item;
-}
+function depth() { return pendingReadings; }
 function enqueue(reading) {
-  if (depth() >= CAPACITY) { rejected++; return false; }
-  queue.push(reading);
+  if (pendingReadings >= CAPACITY) { rejected++; return false; }
+  pendingReadings++;
   accepted++;
-  if (waiting.length) waiting.shift()();
+  currentBatch.push(reading);
+  if (currentBatch.length >= BATCH_SIZE) flush();
   return true;
 }
-function waitForData(ms) {
-  if (depth()) return Promise.resolve();
-  return new Promise(resolve => {
-    const wake = () => { clearTimeout(timer); resolve(); };
-    const timer = setTimeout(() => {
-      const i = waiting.indexOf(wake);
-      if (i >= 0) waiting.splice(i, 1);
-      resolve();
-    }, ms);
-    waiting.push(wake);
-  });
+function flush() {
+  if (!currentBatch.length) return;
+  batchQueue.push(currentBatch);
+  currentBatch = [];
+  dispatch();
 }
+function dispatch() {
+  while (idleWorkers.length && batchQueue.length) {
+    idleWorkers.pop()(batchQueue.shift());
+  }
+}
+function nextBatch() {
+  if (batchQueue.length) return Promise.resolve(batchQueue.shift());
+  return new Promise(resolve => idleWorkers.push(resolve));
+}
+setInterval(flush, WAIT_MS).unref();
+
 setInterval(() => {
   const elu = performance.eventLoopUtilization(previousELU);
   previousELU = performance.eventLoopUtilization();
@@ -64,11 +62,13 @@ setInterval(() => {
     dbActive: pool.totalCount - pool.idleCount,
     dbWaiting: pool.waitingCount,
     batches: batchCount,
+    avgBatchSize: batchCount ? Math.round(batchRows / batchCount) : 0,
+    queuedBatches: batchQueue.length,
     avgBatchMs: batchCount ? Math.round(batchMs / batchCount) : 0,
     eventLoopUtilization: Number(elu.utilization.toFixed(3)),
     eventLoopP95Ms,
   }));
-  accepted = rejected = persisted = failed = batchCount = batchMs = 0;
+  accepted = rejected = persisted = failed = batchCount = batchMs = batchRows = 0;
 }, 1000).unref();
 
 function csvField(value) {
@@ -93,14 +93,7 @@ async function saveBatch(batch) {
 
 async function worker(id) {
   while (true) {
-    await waitForData(WAIT_MS);
-    const batch = [];
-    while (batch.length < BATCH_SIZE) {
-      const reading = dequeue();
-      if (!reading) break;
-      batch.push(reading);
-    }
-    if (!batch.length) continue;
+    const batch = await nextBatch();
     const started = performance.now();
     try {
       await saveBatch(batch);
@@ -109,7 +102,9 @@ async function worker(id) {
       failed += batch.length;
       console.error('Worker', id, 'failed batch of', batch.length, err);
     } finally {
+      pendingReadings -= batch.length;
       batchCount++;
+      batchRows += batch.length;
       batchMs += performance.now() - started;
     }
   }
