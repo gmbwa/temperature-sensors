@@ -171,3 +171,7 @@ With 20 workers, 500-row maximum CopyFrom batches and 50 ms flush timeout, `RATE
 ### 15,000/sec arrival-rate experiment (batch size 500)
 
 At `RATE=15000`, k6 completed **897,166 iterations (14,953/sec)**, with **1.19 ms gRPC p95**, **2,844 dropped iterations**, and **100% checks**. The reported database total was **1,611,956 rows**, which equals **714,790 from the previous 12k/sec run + 897,166 from this run**. The user confirmed the table was not truncated between runs, so the increase of 897,166 rows exactly matches the 897,166 completed requests (zero missing rows in this test). RPC acknowledgment remains in-memory only, and this does not establish crash durability or the system's maximum capacity.
+
+### 20,000/sec arrival-rate experiment (batch size 500)
+
+At `RATE=20000`, k6 completed **1,179,518 iterations (19,655/sec)** with **6.75 ms gRPC p95**, **20,479 dropped iterations**, and **100% RPC checks**. The reported PostgreSQL row count was **1,179,518**, equal to completed requests, but whether the table was truncated before this run is not yet confirmed. The increased p95 relative to 15k/sec suggests greater load pressure; no specific bottleneck has been identified. RPC acknowledgments remain non-durable.
