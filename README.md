@@ -195,3 +195,7 @@ With `npm run start:cluster` (two Node.js processes, 10 database workers and 5,0
 ### Node.js two-process cluster, 12,000/sec target (local)
 
 Full 60-second `RATE=12000` run: **538,932 completed iterations (8,962/sec)**, gRPC p95 **361.76 ms** (failed `<100 ms`), **181,082 dropped iterations**, k6 reached **2,000 VUs**, and 100% of checks on completed iterations passed. User reported **538,932 PostgreSQL rows**, matching completions (assuming a clean table and completed writes). This run performed worse than the earlier 15k-target cluster test; causes not yet isolated. Investigate per-process event-loop metrics and machine-level contention before tuning further.
+
+### Node.js cluster repeat at 12,000/sec (local)
+
+Second full 60-second `RATE=12000` run: **656,902 completed iterations (10,909/sec)**, gRPC p95 **216.58 ms** (failed `<100 ms`), **63,102 dropped iterations**, k6 reached **2,000 VUs**, and 100% of checks on completed iterations passed. Both process logs showed event-loop utilization increasing from ~0.83–0.87 to ~0.96–0.97 and event-loop p95 increasing to 106–151 ms. `rejected=0`, `failed=0`, and `dbWaiting=0` in provided samples; DB row count not provided for this run. The result improves over the first 12k run without a confirmed configuration change; repeatability and shared-machine contention remain concerns.
