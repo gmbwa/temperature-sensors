@@ -4,6 +4,7 @@ import pg from 'pg';
 import { from as copyFrom } from 'pg-copy-streams';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
+import { eventLoopUtilization, monitorEventLoopDelay } from 'node:perf_hooks';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
@@ -20,6 +21,9 @@ const waiting = [];
 const pool = new pg.Pool({ connectionString: DATABASE_URL, max: 20 });
 let accepted = 0, rejected = 0, persisted = 0, failed = 0;
 let batchCount = 0, batchMs = 0;
+const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+loopDelay.enable();
+let previousELU = eventLoopUtilization();
 
 function depth() { return queue.length - head; }
 function dequeue() {
@@ -51,12 +55,18 @@ function waitForData(ms) {
   });
 }
 setInterval(() => {
+  const elu = eventLoopUtilization(previousELU);
+  previousELU = eventLoopUtilization();
+  const eventLoopP95Ms = Number.isFinite(loopDelay.percentile(95)) ? Math.round(loopDelay.percentile(95) / 1e6) : 0;
+  loopDelay.reset();
   console.log(JSON.stringify({
     accepted, rejected, persisted, failed, queueDepth: depth(),
     dbActive: pool.totalCount - pool.idleCount,
     dbWaiting: pool.waitingCount,
     batches: batchCount,
     avgBatchMs: batchCount ? Math.round(batchMs / batchCount) : 0,
+    eventLoopUtilization: Number(elu.utilization.toFixed(3)),
+    eventLoopP95Ms,
   }));
   accepted = rejected = persisted = failed = batchCount = batchMs = 0;
 }, 1000).unref();
