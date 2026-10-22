@@ -12,8 +12,9 @@ import dotenv from 'dotenv';
 
 const here = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(here, '../.env') });
+const NO_DB = process.env.NO_DB === '1';
 const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
+if (!NO_DB && !DATABASE_URL) throw new Error('DATABASE_URL is required');
 // Split the same total queue and database concurrency across two cluster workers.
 const CLUSTERED = cluster.isWorker;
 const CAPACITY = CLUSTERED ? 5000 : 10000;
@@ -122,6 +123,11 @@ const proto = grpc.loadPackageDefinition(definition).temperature.v1;
 const server = new grpc.Server();
 server.addService(proto.TemperatureService.service, {
   RecordTemperature(call, callback) {
+    if (NO_DB) {
+      accepted++;
+      callback(null, { accepted: true });
+      return;
+    }
     if (!enqueue(call.request)) {
       callback({ code: grpc.status.RESOURCE_EXHAUSTED, message: 'queue full' });
       return;
@@ -131,8 +137,12 @@ server.addService(proto.TemperatureService.service, {
 });
 
 try {
-  await pool.query('SELECT 1');
-  for (let i = 0; i < WORKERS; i++) worker(i).catch(err => console.error('Worker stopped', i, err));
+  if (!NO_DB) {
+    await pool.query('SELECT 1');
+    for (let i = 0; i < WORKERS; i++) worker(i).catch(err => console.error('Worker stopped', i, err));
+  } else {
+    console.log('NO_DB=1 benchmark mode: readings acknowledged without persistence');
+  }
   server.bindAsync('127.0.0.1:50051', grpc.ServerCredentials.createInsecure(), (err, port) => {
     if (err) { console.error(err); process.exitCode = 1; return; }
     console.log('Node gRPC server listening on port', port);
