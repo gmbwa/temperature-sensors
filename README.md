@@ -167,3 +167,7 @@ Both tests matched their expected database row counts after the workers drained.
 ### Higher arrival-rate experiment (batch size 500)
 
 With 20 workers, 500-row maximum CopyFrom batches and 50 ms flush timeout, `RATE=12000 k6 run loadtest/temperature.js` yielded **714,790 completed iterations (11,913/sec)**, **1.65 ms gRPC p95**, **5,215 dropped iterations**, and **100% checks**. After truncating the table before the test and allowing the queue to drain, PostgreSQL contained **714,790 rows**. This validates matching accepted/persisted counts for this run, but the RPC acknowledgment precedes the database commit; no crash durability is implied. The result is not a measured maximum throughput.
+
+### 15,000/sec arrival-rate experiment (batch size 500)
+
+At `RATE=15000`, k6 completed **897,166 iterations (14,953/sec)**, with **1.19 ms gRPC p95**, **2,844 dropped iterations**, and **100% checks**. The reported database total was **1,611,956 rows**, which equals **714,790 from the previous 12k/sec run + 897,166 from this run**. This is consistent with all accepted readings being persisted if the table was not truncated between those two runs; confirmation of the starting row count is pending. RPC acknowledgment remains in-memory only, and this does not establish crash durability or the system's maximum capacity.
