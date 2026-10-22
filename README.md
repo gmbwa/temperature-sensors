@@ -137,3 +137,17 @@ These are local development measurements, not production capacity claims. k6 and
 | Buffered channel + 20 slow consumers | 8,333/s | 8,211/s | 488.66 µs | 7,330 | 100% | Twenty consumers provided enough headroom for the simulated 1 ms processing cost, bringing latency and achieved rate close to the fast-consumer baseline. |
 
 The one-worker slow-consumer experiment is deliberately pathological. Its purpose is to make backpressure visible before introducing a worker pool. The 100% RPC check rate does not mean the overloaded run performed well: requests that did execute eventually succeeded, while latency increased sharply and k6 could not schedule most of the requested iterations.
+
+## Local PostgreSQL configuration
+
+Start PostgreSQL with `docker compose up -d`. Copy the development-only environment template into an ignored local file:
+
+```bash
+cp .env.example .env
+set -a
+source .env
+set +a
+go run ./cmd/server
+```
+
+`.env` is already excluded by `.gitignore`; do not commit real credentials. The server reads `DATABASE_URL` from its environment. A successful gRPC acknowledgement currently means the reading entered the in-memory queue, **not** that PostgreSQL committed it.
