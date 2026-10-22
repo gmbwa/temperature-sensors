@@ -160,5 +160,6 @@ Same k6 scenario: 8,333 scheduled iterations/sec for 60 seconds, up to 2,000 VUs
 | --- | ---: | ---: | ---: | ---: | ---: |
 | 20 workers, one INSERT per reading | 4,719 | 602.85 ms | 210,222 | 100% | 289,747 new rows (plus 10 existing) |
 | 20 workers, CopyFrom batches of up to 100, 50 ms flush | 8,188 | 1.45 ms | 8,147 | 100% | 491,829 (table truncated before run) |
+| 20 workers, CopyFrom batches of up to 500, 50 ms flush | 8,270 | 270.54 µs | 3,802 | 100% | 496,182 (table truncated before run) |
 
 Both tests matched their expected database row counts after the workers drained. This verifies persistence in those runs, **not** crash durability: the server acknowledges once a reading enters an in-memory channel, and database failures are logged without retry.
