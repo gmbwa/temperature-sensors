@@ -65,6 +65,7 @@ const idleWorkers = [];
 let pendingReadings = 0;
 let accepted = 0, rejected = 0, persisted = 0, failed = 0;
 let batchCount = 0, batchMs = 0, batchRows = 0;
+let sizeFlushes = 0, sizeFlushRows = 0, timerFlushes = 0, timerFlushRows = 0;
 let csvPrepMs = 0, copyMs = 0, dbAcquireMs = 0, timedBatches = 0;
 const loopDelay = monitorEventLoopDelay({ resolution: 20 });
 loopDelay.enable();
@@ -76,11 +77,13 @@ function enqueue(reading) {
   pendingReadings++;
   accepted++;
   currentBatch.push(reading);
-  if (currentBatch.length >= BATCH_SIZE) flush();
+  if (currentBatch.length >= BATCH_SIZE) flush('size');
   return true;
 }
-function flush() {
+function flush(reason) {
   if (!currentBatch.length) return;
+  if (reason === 'size') { sizeFlushes++; sizeFlushRows += currentBatch.length; }
+  else { timerFlushes++; timerFlushRows += currentBatch.length; }
   batchQueue.push(currentBatch);
   currentBatch = [];
   dispatch();
@@ -94,7 +97,7 @@ function nextBatch() {
   if (batchQueue.length) return Promise.resolve(batchQueue.shift());
   return new Promise(resolve => idleWorkers.push(resolve));
 }
-setInterval(flush, WAIT_MS).unref();
+setInterval(() => flush('timer'), WAIT_MS).unref();
 
 setInterval(() => {
   const elu = performance.eventLoopUtilization(previousELU);
@@ -107,6 +110,9 @@ setInterval(() => {
     dbWaiting: pool.waitingCount,
     batches: batchCount,
     avgBatchSize: batchCount ? Math.round(batchRows / batchCount) : 0,
+    sizeFlushes, timerFlushes,
+    avgSizeFlushBatchSize: sizeFlushes ? Math.round(sizeFlushRows / sizeFlushes) : 0,
+    avgTimerFlushBatchSize: timerFlushes ? Math.round(timerFlushRows / timerFlushes) : 0,
     queuedBatches: batchQueue.length,
     avgBatchMs: batchCount ? Math.round(batchMs / batchCount) : 0,
     avgDbAcquireMs: timedBatches ? Number((dbAcquireMs / timedBatches).toFixed(2)) : 0,
@@ -116,6 +122,7 @@ setInterval(() => {
     eventLoopP95Ms,
   }));
   accepted = rejected = persisted = failed = batchCount = batchMs = batchRows = 0;
+  sizeFlushes = sizeFlushRows = timerFlushes = timerFlushRows = 0;
   csvPrepMs = copyMs = dbAcquireMs = timedBatches = 0;
 }, 10000).unref();
 
