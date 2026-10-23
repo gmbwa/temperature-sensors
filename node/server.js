@@ -139,14 +139,14 @@ async function saveBatch(batch) {
   timedBatches++;
   try {
     const prepStarted = performance.now();
-    const lines = batch.map(r =>
+    const csv = batch.map(r =>
       [csvField(r.device_id), Number(r.temperature_c), new Date(Number(r.timestamp) * 1000).toISOString()].join(',') + '\n'
-    );
+    ).join('');
     csvPrepMs += performance.now() - prepStarted;
     const copyStarted = performance.now();
     try {
       await pipeline(
-      Readable.from(lines),
+      Readable.from([csv]),
       client.query(copyFrom('COPY temperature_readings (device_id, temperature_c, recorded_at) FROM STDIN WITH (FORMAT csv)'))
       );
     } finally {
