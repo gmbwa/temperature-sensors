@@ -140,7 +140,8 @@ async function saveBatch(batch) {
   try {
     const prepStarted = performance.now();
     const csv = batch.map(r =>
-      [csvField(r.device_id), Number(r.temperature_c), new Date(Number(r.timestamp) * 1000).toISOString()].join(',') + '\n'
+      csvField(r.device_id) + ',' + Number(r.temperature_c) + ',' +
+      new Date(Number(r.timestamp) * 1000).toISOString() + '\n'
     ).join('');
     csvPrepMs += performance.now() - prepStarted;
     const copyStarted = performance.now();
