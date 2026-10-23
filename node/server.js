@@ -55,7 +55,7 @@ if (!NO_DB && !DATABASE_URL) throw new Error('DATABASE_URL is required');
 // Split the same total queue and database concurrency across two cluster workers.
 const CLUSTERED = cluster.isWorker;
 const CAPACITY = CLUSTERED ? 5000 : 10000;
-const WORKERS = CLUSTERED ? 5 : 10;
+const WORKERS = Number(process.env.WORKERS || (CLUSTERED ? 5 : 10));
 const BATCH_SIZE = 2000, WAIT_MS = 600;
 // Shared batch collector: one 50ms flush timer, 20 concurrent COPY workers.
 const pool = new pg.Pool({ connectionString: DATABASE_URL, max: WORKERS });
