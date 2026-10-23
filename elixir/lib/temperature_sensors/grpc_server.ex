@@ -9,7 +9,11 @@ defmodule TemperatureSensors.GrpcServer do
         Metrics.inc(:accepted)
         true
       else
-        Collector.enqueue(reading)
+        started = System.monotonic_time(:microsecond)
+        result = Collector.enqueue(reading)
+        elapsed_us = System.monotonic_time(:microsecond) - started
+        Metrics.observe_collector_call(elapsed_us)
+        result
       end
 
     if accepted do
