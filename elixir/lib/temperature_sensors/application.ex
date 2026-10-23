@@ -19,7 +19,7 @@ defmodule TemperatureSensors.Application do
       [{TemperatureSensors.Metrics, []}, {Task.Supervisor, name: TemperatureSensors.CopyTasks}] ++
       db_children ++
       (if no_db, do: [], else: [{TemperatureSensors.Collector, []}]) ++
-      [{GRPC.Server.Supervisor, {TemperatureSensors.Endpoint, 50051}}]
+      [{GRPC.Server.Supervisor, [endpoint: TemperatureSensors.Endpoint, port: 50051, start_server: true]}]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: TemperatureSensors.Supervisor)
   end
