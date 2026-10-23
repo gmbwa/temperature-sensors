@@ -7,9 +7,8 @@ defmodule TemperatureSensors.Writer do
     else
       csv = Enum.map(batch, &csv_row/1)
       case Postgrex.transaction(TemperatureSensors.DB, fn conn ->
-        conn
-        |> Postgrex.stream(@copy, [])
-        |> Enum.into(csv)
+        csv
+        |> Enum.into(Postgrex.stream(conn, @copy, []))
       end, timeout: 60_000) do
         {:ok, _} -> :ok
         {:error, reason} -> {:error, reason}
